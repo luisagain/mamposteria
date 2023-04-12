@@ -176,8 +176,9 @@ class Muro:
         self.fm : float = fm
         self.castillo : Muro.Castillo = castillo
         self.at_muros: float = at_muros
-        self.Ash: float = 0 #TODO VALOR AGREGADO RECIENTEMENTE, CAMBIAR
-        self.sht: float = 0 #TODO VALOR AGREGADO RECIENTEMENTE, CAMBIAR 
+        self.Ash: float = 0.36 #TODO VALOR AGREGADO RECIENTEMENTE, CAMBIAR
+        self.sht: float = 43 #TODO VALOR AGREGADO RECIENTEMENTE, CAMBIAR 
+        
         #* _____________ Constantes _____________
 
         self.cm_muro: float = 1.3
@@ -186,7 +187,9 @@ class Muro:
         self.vm : float = 2 #kg/cm2
         self.frv : float = 0.7
         self.fyh : float = 6000 #kg/cm2
-        self.alpha : float = 1/0.045 #kg/cm2
+        self.alpha : float = 0.045 #kg/cm2
+        self.fan: float = 0.55
+        self.cs: float = 0.19 #coeficiente sismico para la ciudad de Tuxtla Gutierrez
         #*_____________ digitables opcionales _____________
 
         #Asignación por defecto de espesor
@@ -228,23 +231,28 @@ class Muro:
         self.__VMR : float = 0 #TODO se debe utilizar para calcular VR en futuras versiones
         self.__phVSR : float = 0 #TODO
         self.__k0 : float = 0
+        self.__k1 : float = 0
         self.__ns : float = 0
         self.__N : float = 0
         self.__VSR : float = 0
         self.__VR : float = 0
         self.__VU : float = 0
+        self.__P : float = 0
+        self.__cuantiah : float = 0
+        
         #* _____________ Cálculos de castillo _____________
         castillo.calcSep(self.__espesor)
         
         #* _____________ Cálculos de muro _____________
-        self.calcF()
         self.caclPesoML()
         
     def __add__(self, otherInstance):
 
         self.__pu += otherInstance.__pu
+        
         return self
-
+        
+    
     
     def calcPU(self):
         
@@ -279,78 +287,94 @@ class Muro:
         else:
             self.__comparacion = "No Cumple"
 
-    def calcPR(self): #$ FUNCION AÑADIDA
+    def calcPR(self): 
         '''
             Se calculará la carga que resisten los muros
         '''
         self.__pr = self.fr*self.fe*((self.fm*self.__area_transversal)+(self.castillo.varilla*self.castillo.fy))
-
+        
     def calcF(self):
         '''
             Calculamos F
         '''
-
+      
         if self.altura_libre/self.longitud <= 0.2:
             self.__f = 1.5
 
         elif self.altura_libre/self.longitud >= 1:
             self.__f = 1
-        
+            
         else:
-            self.__f = 1.625 -0.625*self.altura_libre/self.longitud
+            self.__f = 1.625 -(0.625*self.altura_libre/self.longitud)
+            
 
-        pass
-        
+    
     def caclPesoML(self):
         '''
             Calcula el peso por metro lineal
         '''
 
         self.__peso_ml = ((self.peso_mc_material) + self.__peso_add_m2)*self.altura_libre #kg/m
+    
+    def calcP(self): #$ VERIFICADO
+        '''
+            Calcula el valor de P para la fuerza cortante que resiste la mamposteria
+        '''
+        self.__P= self.__peso_cm + self.__peso_cv
 
-    def calcVmR(self): #TODO AGREGADO. VERIFICAR
+    def calcVmR(self):  #$ VERIFICADO
         '''
             Calcula la carga horizontal que resiste la mampostería
         '''
-        if self.frv*(0.5*self.vm*self.at_muros+0.3*(1.3*self.__peso_cm+1.5*self.__peso_cv)) >= 1.5*self.frv*self.vm*self.at_muros*self.__f:
-            self.__VMR=self.frv*(0.5*self.vm*self.at_muros+0.3*(1.3*self.__peso_cm+1.5*self.__peso_cv))
-        elif self.frv*(0.5*self.vm*self.at_muros+0.3*(1.3*self.__peso_cm+1.5*self.__peso_cv)) <= 1.5*self.frv*self.vm*self.at_muros*self.__f:
-            self.__VMR= 1.5*self.frv*self.vm*self.at_muros*self.__f
+        a = self.frv*((0.5*self.vm*self.__area_transversal+(0.3*self.__P))*self.__f)
+        b = 1.5*self.frv*self.vm*self.__area_transversal*self.__f
+        
+        self.__VMR = min(a,b)
+
+    
+            
     def calcPhVSR(self):
         '''
         Calcula el valor de Ph usado en la ecuación 5.4.5 de la NTC de mampostería
         '''
-        self.__phVSR = self.Ash/self.sht
+        self.__phVSR = self.Ash/(self.sht*15)
 
-    def calck0(self): #TODO AGREGAR INTERPOLACION LINEAL PARA EL CASO EN DONDE K0 NO ENTRE EN EL RANGO
+    def calck0(self): #$ VERIFICADO
         '''
         Calcula el valor de k0 que se utiliza en la expresión 5.4.5
         '''
-        if self.altura_libre/self.longitud <= 1.0:
-            self.__k0 = 1.5
 
-        elif self.altura_libre/self.longitud >= 1.5:
+        hl = self.altura_libre/self.longitud
+        
+        if hl <= 1.0:
+            self.__k0 = 1.3
+
+        elif hl >= 1.5:
             self.__k0= 1
         
         else:
-            self.__k0 = 1.625 -0.625*self.altura_libre/self.longitud
+            self.__k0 = 1.9-0.6*hl  
 
-        pass
-    def calccuantiah(self): #TODO VERIFICAR
+        
+
+            
+    def calcuantiah(self): #$ VERIFICADO
         '''
         Calcula la cuantia de acero utilizada en el refuerzo horizontal de los muros
         '''
-        self.__cuantiah = self.__phVSR*self.fyh
-    def calck1(self): #TODO VERIFICAR
+        self.__cuantiah = self.__phVSR*(self.fyh)
+
+    def calck1(self): #$ VERIFICADO
         '''
         Calcula el valor de k1 utilizado en la expresion 5.4.5
         '''
-        self.__k1= 1-self.alpha*self.__cuantiah
+        self.__k1= 1-(self.alpha*self.__cuantiah)
 
     def calcns (self): #TODO VERIFICAR
         '''
         Calcula el valor de ns utilizado en la expresion 5.4.5
         '''
+        
         if self.fm >= 90:
             self.__ns = 0.75
 
@@ -358,18 +382,43 @@ class Muro:
             self.__ns= 0.55
         
         else:
-            self.__ns = 1.625 -0.625*self.altura_libre/self.longitud #TODO MODIFICAR ESTA INTERPOLACION
-
-    def calcN (self): #TODO VERIFICAR
+            self.__ns = 1.15 -0.00666*self.fm   
+        
+    
+    def calcN (self): #$ VERIFICADO
         '''
         Valor de N utilizado en la expresion 5.4.4
         '''
-        self.__N= (self.__VMR/(self.frv*self.__cuantiah*self.at_muros))*(self.__k0*self.__k1-1)+self.__ns
+        self.__N = (self.__VMR/(self.frv*self.__cuantiah*self.__area_transversal))*(self.__k0*self.__k1-1)+self.__ns
+    
+    # def calcResistenciaHorizontalTotal (self):
+    #     '''
+    #     Este método ordena el proceso de ejecucion de los métodos anteriores.
+    #     '''
+    #     self.__calcF()
+    #     self.__calcP()
+    #     self.__calcVmR()
+    #     self.__calcPhVSR()
+    #     self.__calcuantiah()
+    #     self.__calck0()
+    #     self.__calck1()
+    #     self.__calcns()
+    #     self.__calcN()
+    #     self.__calcVSR()
+    #     self.__calcVR()
+    #     self.__compVRVU()
+
+    def calcVu(self): #TODO VERIFICAR
+        '''
+        Calcula el valor de Vu
+        '''
+        self.__VU = self.__pu*self.cs
+
     def calcVSR(self): #TODO AGREGADO RECIENTEMENTE, VERIFICAR
         '''
         Calcula la carga horizontal que resiste el acero de refuerzo
         '''
-        self.__VSR= self.frv*self.__cuantiah*self.__N*self.at_muros
+        self.__VSR= self.frv*self.__cuantiah*self.__N*self.__area_transversal
     def calcVR(self): #TODO Comprobar que esto sea cierto
         '''
         Calcula la carga resistente total sumando lo que resiste la mampsoteria
@@ -421,8 +470,27 @@ class Muro:
     #$ AGREGADOS EL 11/04/2023  
     def getVR(self):
         return self.__VR
+    def getVMR(self):
+        return self.__VMR
+    def getP(self):
+        return self.__P
+    def getk0(self):
+        return self.__k0
+    def getk1(self):
+        return self.__k1
+    def getns (self):
+        return self.__ns
+    def getcuantia(self):
+        return self.__cuantiah
+    def getVSR(self):
+        return self.__VSR
+    def getN(self):
+        return self.__N
+    def getVU(self):
+        return self.__VU
+    def getCompVRVu(self):
+        return self.__comparacion
 
-    
 
 class Planta:
 
@@ -455,7 +523,7 @@ class Planta:
 
         self.calcPv()
         self.calcPh()
-
+        
 
         #Calculamos los datos de los muros
         self.calcMurosData()
@@ -471,14 +539,15 @@ class Planta:
             self.__muros_pt += muro.getPesoML()*muro.longitud
 
         pass
-
+        
     def __add__(self, otherInstance):
 
         self.__peso_losa += otherInstance.getPesoLosa()
         self.__muros_pt += otherInstance.getMurosPT()
         
+    
         muro : Muro
-
+        
         ##dsn: ya que ambas plantas van a ocupar muros identicos se debe tener la misma cantidad de muros en ambas plantas
         ##dsn: por lo tanto, vamos a tomar los muros de la primer planta y los muros equivalentes de la segunda
         ##dsn: para sumar ambos valores de pu y pr, con los muros equivalentes
@@ -528,8 +597,19 @@ class Planta:
             muro.calcPR()
             muro.calcPU()
             muro.CompPRPU()
-            
-        
+            muro.calcF()
+            muro.calcP()
+            muro.calcVmR()
+            muro.calcPhVSR()
+            muro.calcuantiah()
+            muro.calck0()
+            muro.calck1()
+            muro.calcns()
+            muro.calcN()
+            muro.calcVSR()
+            muro.calcVR()
+            muro.calcVu()
+            muro.compVRVU()
             
 
     
@@ -553,7 +633,14 @@ class Planta:
     
     def getPesoLosa(self): 
         return self.__peso_losa 
-    def getPesoCM(self): #$ AÑADIDO
+    def getPesoCM(self):
         return self.__peso_cm
-    def getPesoCV(self): #$ AÑADIDO
+    def getPesoCV(self): 
         return self.__peso_cv
+
+
+
+
+#if __name__ == "__main__":
+    
+    
